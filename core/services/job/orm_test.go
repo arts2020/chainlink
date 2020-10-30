@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/smartcontractkit/chainlink/core/internal/cltest"
+	globalMocks "github.com/smartcontractkit/chainlink/core/internal/mocks"
 	"github.com/smartcontractkit/chainlink/core/services/job"
 	"github.com/smartcontractkit/chainlink/core/services/pipeline"
 	"github.com/smartcontractkit/chainlink/core/services/postgres"
@@ -26,6 +27,8 @@ func TestORM(t *testing.T) {
 
 	orm := job.NewORM(db, config, pipelineORM, eventBroadcaster, &postgres.NullAdvisoryLocker{})
 	defer orm.Close()
+
+	unloader := new(globalMocks.Unloader)
 
 	ocrSpec, dbSpec := makeOCRJobSpec(t, db)
 
@@ -45,7 +48,7 @@ func TestORM(t *testing.T) {
 	require.NoError(t, err)
 	defer db2.Close()
 
-	orm2 := job.NewORM(db2, config, pipeline.NewORM(db2, config, eventBroadcaster), eventBroadcaster, &postgres.NullAdvisoryLocker{})
+	orm2 := job.NewORM(db2, config, pipeline.NewORM(db2, config, eventBroadcaster, unloader), eventBroadcaster, &postgres.NullAdvisoryLocker{})
 	defer orm2.Close()
 
 	t.Run("it correctly returns the unclaimed jobs in the DB", func(t *testing.T) {
@@ -78,12 +81,17 @@ func TestORM(t *testing.T) {
 		require.Equal(t, int32(2), unclaimed[0].OffchainreportingOracleSpec.ID)
 	})
 
-	t.Run("it cannot delete jobs claimed by other nodes", func(t *testing.T) {
+	t.Run("it can delete jobs claimed by other nodes", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
 		err := orm2.DeleteJob(ctx, dbSpec.ID)
-		require.Error(t, err)
+		require.NoError(t, err)
+
+		var dbSpecs []models.JobSpecV2
+		err = db.Find(&dbSpecs).Error
+		require.NoError(t, err)
+		require.Len(t, dbSpecs, 1)
 	})
 
 	t.Run("it deletes its own claimed jobs from the DB", func(t *testing.T) {

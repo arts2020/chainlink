@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/smartcontractkit/chainlink/core/internal/cltest"
+	globalMocks "github.com/smartcontractkit/chainlink/core/internal/mocks"
 	"github.com/smartcontractkit/chainlink/core/services/job"
 	"github.com/smartcontractkit/chainlink/core/services/job/mocks"
 	"github.com/smartcontractkit/chainlink/core/services/offchainreporting"
@@ -76,13 +77,15 @@ func TestSpawner_CreateJobDeleteJob(t *testing.T) {
 	eventBroadcaster.Start()
 	defer eventBroadcaster.Stop()
 
+	unloader := new(globalMocks.Unloader)
+
 	t.Run("starts and stops job services when jobs are added and removed", func(t *testing.T) {
 		innerJobSpecA, _ := makeOCRJobSpec(t, db)
 		innerJobSpecB, _ := makeOCRJobSpec(t, db)
 		jobSpecA := &spec{innerJobSpecA, jobTypeA}
 		jobSpecB := &spec{innerJobSpecB, jobTypeB}
 
-		orm := job.NewORM(db, config, pipeline.NewORM(db, config, eventBroadcaster), eventBroadcaster, &postgres.NullAdvisoryLocker{})
+		orm := job.NewORM(db, config, pipeline.NewORM(db, config, eventBroadcaster, unloader), eventBroadcaster, &postgres.NullAdvisoryLocker{})
 		defer orm.Close()
 		spawner := job.NewSpawner(orm, config)
 		spawner.Start()
@@ -149,7 +152,7 @@ func TestSpawner_CreateJobDeleteJob(t *testing.T) {
 		serviceA1.On("Start").Return(nil).Once()
 		serviceA2.On("Start").Return(nil).Once().Run(func(mock.Arguments) { eventually.ItHappened() })
 
-		orm := job.NewORM(db, config, pipeline.NewORM(db, config, eventBroadcaster), eventBroadcaster, &postgres.NullAdvisoryLocker{})
+		orm := job.NewORM(db, config, pipeline.NewORM(db, config, eventBroadcaster, unloader), eventBroadcaster, &postgres.NullAdvisoryLocker{})
 		defer orm.Close()
 		spawner := job.NewSpawner(orm, config)
 
@@ -180,7 +183,7 @@ func TestSpawner_CreateJobDeleteJob(t *testing.T) {
 		serviceA1.On("Start").Return(nil).Once()
 		serviceA2.On("Start").Return(nil).Once().Run(func(mock.Arguments) { eventually.ItHappened() })
 
-		orm := job.NewORM(db, config, pipeline.NewORM(db, config, eventBroadcaster), eventBroadcaster, &postgres.NullAdvisoryLocker{})
+		orm := job.NewORM(db, config, pipeline.NewORM(db, config, eventBroadcaster, unloader), eventBroadcaster, &postgres.NullAdvisoryLocker{})
 		defer orm.Close()
 		spawner := job.NewSpawner(orm, config)
 

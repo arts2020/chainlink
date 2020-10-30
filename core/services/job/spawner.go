@@ -30,6 +30,7 @@ type (
 		Stop()
 		CreateJob(ctx context.Context, spec Spec) (int32, error)
 		DeleteJob(ctx context.Context, jobID int32) error
+		UnloadJob(jobID int32)
 		RegisterDelegate(delegate Delegate)
 	}
 
@@ -253,10 +254,14 @@ func (js *spawner) DeleteJob(ctx context.Context, jobID int32) error {
 	}
 	logger.Infow("Deleted job", "jobID", jobID)
 
+	js.UnloadJob(jobID)
+
+	return nil
+}
+
+func (js *spawner) UnloadJob(jobID int32) {
 	select {
 	case <-js.chStop:
 	case js.chStopJob <- jobID:
 	}
-
-	return nil
 }

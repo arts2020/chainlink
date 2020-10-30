@@ -13,6 +13,7 @@ import (
 	"gopkg.in/guregu/null.v4"
 
 	"github.com/smartcontractkit/chainlink/core/internal/cltest"
+	"github.com/smartcontractkit/chainlink/core/internal/mocks"
 	"github.com/smartcontractkit/chainlink/core/services/job"
 	"github.com/smartcontractkit/chainlink/core/services/pipeline"
 	"github.com/smartcontractkit/chainlink/core/services/postgres"
@@ -413,4 +414,24 @@ func TestORM(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestORM_CreateRunWhenJobDeleted(t *testing.T) {
+	config, cleanup := cltest.NewConfig(t)
+	defer cleanup()
+	store, cleanup := cltest.NewStoreWithConfig(config)
+	defer cleanup()
+	db := store.DB
+
+	unloader := new(mocks.Unloader)
+	orm, _, cleanup := cltest.NewPipelineORM(t, config, db, unloader)
+	defer cleanup()
+
+	unloader.On("UnloadJob", int32(-1)).Once().Return()
+
+	// Use non-existent job ID to simulate situation if a job is deleted between runs
+	_, err := orm.CreateRun(context.Background(), -1, nil)
+	require.EqualError(t, err, "job with ID -1 was not found (most likely it was deleted)")
+
+	unloader.AssertExpectations(t)
 }

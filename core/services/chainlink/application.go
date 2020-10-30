@@ -125,11 +125,15 @@ func NewApplication(config *orm.Config, ethClient eth.Client, advisoryLocker pos
 	}
 
 	var (
-		pipelineORM    = pipeline.NewORM(store.ORM.DB, store.Config, eventBroadcaster)
-		pipelineRunner = pipeline.NewRunner(pipelineORM, store.Config)
-		jobORM         = job.NewORM(store.ORM.DB, store.Config, pipelineORM, eventBroadcaster, advisoryLocker)
-		jobSpawner     = job.NewSpawner(jobORM, store.Config)
+		pipelineORM    pipeline.ORM
+		pipelineRunner pipeline.Runner
+		jobORM         job.ORM
+		jobSpawner     job.Spawner
 	)
+	pipelineORM = pipeline.NewORM(store.ORM.DB, store.Config, eventBroadcaster, jobSpawner)
+	pipelineRunner = pipeline.NewRunner(pipelineORM, store.Config)
+	jobORM = job.NewORM(store.ORM.DB, store.Config, pipelineORM, eventBroadcaster, advisoryLocker)
+	jobSpawner = job.NewSpawner(jobORM, store.Config)
 
 	if config.Dev() || config.FeatureOffchainReporting() {
 		offchainreporting.RegisterJobType(store.ORM.DB, store.Config, store.OCRKeyStore, jobSpawner, pipelineRunner, ethClient, logBroadcaster)

@@ -63,9 +63,11 @@ func (o *orm) ClaimUnclaimedJobs(ctx context.Context) ([]models.JobSpecV2, error
 	o.claimedJobsMu.Lock()
 	defer o.claimedJobsMu.Unlock()
 
+	claimedJobIDs := o.claimedJobIDs()
+
 	var join string
 	var args []interface{}
-	if len(o.claimedJobIDs()) > 0 {
+	if len(claimedJobIDs) > 0 {
 		// NOTE: OFFSET 0 is a postgres trick that doesn't change the result,
 		// but prevents the optimiser from trying to pull the where condition
 		// up out of the subquery
@@ -75,7 +77,7 @@ func (o *orm) ClaimUnclaimedJobs(ctx context.Context) ([]models.JobSpecV2, error
                 FROM (SELECT id FROM jobs WHERE id != ANY(?) OFFSET 0) not_claimed_by_us
             ) claimed_jobs ON jobs.id = claimed_jobs.id AND claimed_jobs.locked
         `
-		args = []interface{}{o.advisoryLockClassID, pq.Array(o.claimedJobIDs())}
+		args = []interface{}{o.advisoryLockClassID, pq.Array(claimedJobIDs)}
 	} else {
 		join = `
             INNER JOIN (
@@ -136,43 +138,28 @@ func (o *orm) DeleteJob(ctx context.Context, id int32) error {
 	o.claimedJobsMu.Lock()
 	defer o.claimedJobsMu.Unlock()
 
-	idx := -1
 	for i, j := range o.claimedJobs {
 		if j.ID == id {
-			idx = i
-			break
+			// Delete the current job from the claimedJobs list
+			o.claimedJobs[i] = o.claimedJobs[len(o.claimedJobs)-1] // Copy last element to current position
+			o.claimedJobs = o.claimedJobs[:len(o.claimedJobs)-1]   // Truncate slice.
+
+			err := o.advisoryLocker.Unlock(ctx, o.advisoryLockClassID, id)
+			if err != nil {
+				return errors.Wrap(err, "DeleteJob failed to unlock job")
+			}
 		}
 	}
-	if idx < 0 {
-		return errors.New("cannot delete job that is not claimed by this orm")
-	}
 
-	ctx, cancel := utils.CombinedContext(ctx, o.config.DatabaseMaximumTxDuration())
-	defer cancel()
-
-	return postgres.GormTransaction(ctx, o.db, func(tx *gorm.DB) error {
-		err := tx.Exec(`
+	// FIXME: Why not simply call jobORM.pipleineORM.DeleteJob?
+	err := o.db.Exec(`
             WITH deleted_jobs AS (
-            	DELETE FROM jobs WHERE id = $1 RETURNING offchainreporting_oracle_spec_id
-            )
-            DELETE FROM offchainreporting_oracle_specs WHERE id IN (SELECT offchainreporting_oracle_spec_id FROM deleted_jobs)
+            	DELETE FROM jobs WHERE id = $1 RETURNING offchainreporting_oracle_spec_id, pipeline_spec_id
+            ),
+            deleted_oracle_specs AS (
+				DELETE FROM offchainreporting_oracle_specs WHERE id IN (SELECT offchainreporting_oracle_spec_id FROM deleted_jobs)
+			)
+			DELETE FROM pipeline_specs WHERE id IN (SELECT pipeline_spec_id FROM deleted_jobs)
     	`, id).Error
-		if err != nil {
-			return errors.Wrap(err, "DeleteJob failed to delete job")
-		}
-
-		err = tx.Exec(`DELETE FROM pipeline_specs WHERE id = ?`, o.claimedJobs[idx].PipelineSpecID).Error
-		if err != nil {
-			return errors.Wrap(err, "DeleteJob failed to delete pipeline spec")
-		}
-
-		err = o.advisoryLocker.Unlock(ctx, o.advisoryLockClassID, id)
-		if err != nil {
-			return errors.Wrap(err, "DeleteJob failed to unlock job")
-		}
-		// Delete the current job from the claimedJobs list
-		o.claimedJobs[idx] = o.claimedJobs[len(o.claimedJobs)-1] // Copy last element to current position
-		o.claimedJobs = o.claimedJobs[:len(o.claimedJobs)-1]     // Truncate slice.
-		return nil
-	})
+	return errors.Wrap(err, "DeleteJob failed to delete job")
 }

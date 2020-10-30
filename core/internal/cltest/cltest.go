@@ -241,11 +241,18 @@ func NewConfigWithWSServer(t testing.TB, url string, wsserver *httptest.Server) 
 	return config
 }
 
-func NewPipelineORM(t testing.TB, config *TestConfig, db *gorm.DB) (pipeline.ORM, postgres.EventBroadcaster, func()) {
+func NewPipelineORM(t testing.TB, config *TestConfig, db *gorm.DB, opts ...interface{}) (pipeline.ORM, postgres.EventBroadcaster, func()) {
 	t.Helper()
 	eventBroadcaster := postgres.NewEventBroadcaster(config.DatabaseURL(), 0, 0)
 	eventBroadcaster.Start()
-	return pipeline.NewORM(db, config, eventBroadcaster), eventBroadcaster, func() {
+	var unloader pipeline.Unloader = new(mocks.Unloader)
+	for _, opt := range opts {
+		switch v := opt.(type) {
+		case pipeline.Unloader:
+			unloader = v
+		}
+	}
+	return pipeline.NewORM(db, config, eventBroadcaster, unloader), eventBroadcaster, func() {
 		eventBroadcaster.Stop()
 	}
 }
