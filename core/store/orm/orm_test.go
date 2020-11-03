@@ -779,37 +779,6 @@ func TestORM_GetLastNonce_StormNotFound(t *testing.T) {
 	assert.Equal(t, uint64(0), nonce)
 }
 
-func TestORM_GetLastNonce_Valid(t *testing.T) {
-	t.Parallel()
-	config, cleanup := cltest.NewConfig(t)
-	defer cleanup()
-	config.Set("ENABLE_BULLETPROOF_TX_MANAGER", false) // TODO - remove with test
-	app, cleanup := cltest.NewApplicationWithConfigAndKey(t, config,
-		cltest.EthMockRegisterChainID,
-		cltest.EthMockRegisterGetBalance,
-	)
-	defer cleanup()
-	store := app.Store
-	manager := store.TxManager
-	ethMock := app.EthMock
-	one := uint64(1)
-
-	ethMock.Register("eth_getTransactionCount", utils.Uint64ToHex(one))
-	ethMock.Register("eth_sendRawTransaction", cltest.NewHash())
-
-	assert.NoError(t, app.StartAndConnect())
-
-	to := cltest.NewAddress()
-	_, err := manager.CreateTx(to, []byte{})
-	assert.NoError(t, err)
-
-	account := cltest.GetAccountAddress(t, store)
-	nonce, err := store.GetLastNonce(account)
-
-	assert.NoError(t, err)
-	assert.Equal(t, one, nonce)
-}
-
 func TestORM_MarkRan(t *testing.T) {
 	t.Parallel()
 
