@@ -190,24 +190,26 @@ func passwordFromFile(pwdFile string) (string, error) {
 	return strings.TrimSpace(string(dat)), err
 }
 func logIfNonceOutOfSync(store *strpkg.Store) {
-	account := store.TxManager.NextActiveAccount()
-	if account == nil {
-		return
-	}
-	lastNonce, err := store.GetLastNonce(account.Address)
-	if err != nil {
-		logger.Error("database error when checking nonce: ", err)
-		return
-	}
+	// TODO - RYAN
+	panic("not implemented")
+	// account := store.TxManager.NextActiveAccount()
+	// if account == nil {
+	// 	return
+	// }
+	// lastNonce, err := store.GetLastNonce(account.Address)
+	// if err != nil {
+	// 	logger.Error("database error when checking nonce: ", err)
+	// 	return
+	// }
 
-	if localNonceIsNotCurrent(lastNonce, account.Nonce()) {
-		logger.Warn("The account is being used by another wallet and is not safe to use with chainlink")
-	}
+	// if localNonceIsNotCurrent(lastNonce, account.Nonce()) {
+	// 	logger.Warn("The account is being used by another wallet and is not safe to use with chainlink")
+	// }
 }
 
-func localNonceIsNotCurrent(lastNonce, nonce uint64) bool {
-	return lastNonce+1 < nonce
-}
+// func localNonceIsNotCurrent(lastNonce, nonce uint64) bool {
+// 	return lastNonce+1 < nonce
+// }
 
 func updateConfig(config *orm.Config, debug bool, replayFromBlock int64) {
 	if debug {
@@ -311,83 +313,11 @@ func (cli *Client) RebroadcastTransactions(c *clipkg.Context) (err error) {
 		return cli.errorOut(err)
 	}
 
-	if store.Config.EnableBulletproofTxManager() {
-		logger.Infof("Rebroadcasting transactions from %v to %v", beginningNonce, endingNonce)
+	logger.Infof("Rebroadcasting transactions from %v to %v", beginningNonce, endingNonce)
 
-		ec := bulletprooftxmanager.NewEthConfirmer(store, cli.Config)
-		err = ec.ForceRebroadcast(beginningNonce, endingNonce, gasPriceWei, address, overrideGasLimit)
-	} else {
-		logger.Infof("Rebroadcasting legacy transactions from %v to %v", beginningNonce, endingNonce)
-
-		err = rebroadcastLegacyTransactions(store, beginningNonce, endingNonce, gasPriceWei, overrideGasLimit)
-	}
+	ec := bulletprooftxmanager.NewEthConfirmer(store, cli.Config)
+	err = ec.ForceRebroadcast(beginningNonce, endingNonce, gasPriceWei, address, overrideGasLimit)
 	return cli.errorOut(err)
-}
-
-func rebroadcastLegacyTransactions(store *strpkg.Store, beginningNonce uint, endingNonce uint, gasPriceWei uint64, overrideGasLimit uint64) (err error) {
-	lastHead, err := store.LastHead()
-	if err != nil {
-		return err
-	}
-	err = store.TxManager.Connect(lastHead)
-	if err != nil {
-		return err
-	}
-
-	transactions, err := store.FindAllTxsInNonceRange(beginningNonce, endingNonce)
-	if err != nil {
-		return err
-	}
-	n := len(transactions)
-	for i, tx := range transactions {
-		var gasLimit uint64
-		if overrideGasLimit == 0 {
-			gasLimit = tx.GasLimit
-		} else {
-			gasLimit = overrideGasLimit
-		}
-		logger.Infow("Rebroadcasting transaction", "idx", i, "of", n, "nonce", tx.Nonce, "id", tx.ID)
-
-		gasPrice := big.NewInt(int64(gasPriceWei))
-		rawTx, err := store.TxManager.SignedRawTxWithBumpedGas(tx, gasLimit, *gasPrice)
-		if err != nil {
-			logger.Error(err)
-			continue
-		}
-
-		hash, err := store.TxManager.SendRawTx(rawTx)
-		if err != nil {
-			logger.Error(err)
-			continue
-		}
-
-		logger.Infow("Sent transaction", "idx", i, "of", n, "nonce", tx.Nonce, "id", tx.ID, "hash", hash)
-
-		jobRunID, err := models.NewIDFromString(tx.SurrogateID.ValueOrZero())
-		if err != nil {
-			logger.Infow("could not get UUID from surrogate ID", "SurrogateID", tx.SurrogateID.ValueOrZero())
-			continue
-		}
-		jobRun, err := store.FindJobRun(jobRunID)
-		if err != nil {
-			logger.Errorw("could not find job run", "id", jobRunID)
-			continue
-		}
-		for taskIndex := range jobRun.TaskRuns {
-			taskRun := &jobRun.TaskRuns[taskIndex]
-			if taskRun.Status == models.RunStatusPendingOutgoingConfirmations {
-				taskRun.Status = models.RunStatusErrored
-			}
-		}
-		jobRun.SetStatus(models.RunStatusErrored)
-
-		err = store.ORM.SaveJobRun(&jobRun)
-		if err != nil {
-			logger.Errorw("error saving job run", "id", jobRunID)
-			continue
-		}
-	}
-	return nil
 }
 
 // HardReset will remove all non-started transactions if any are found.
