@@ -413,4 +413,22 @@ func TestORM(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("increase pipeline spec occurrence", func(t *testing.T) {
+		orm, _, cleanup := cltest.NewPipelineORM(t, config, db)
+		defer cleanup()
+
+		g := pipeline.NewTaskDAG()
+		specID, err = orm.CreateSpec(context.Background(), *g)
+		require.NoError(t, err)
+
+		ocrSpecError := "ocr spec errored"
+		orm.UpsertErrorFor(specID, ocrSpecError)
+
+		var specErrors []pipeline.SpecError
+		err = db.Find(&specErrors).Error
+		require.NoError(t, err)
+		require.Len(t, specErrors, 1)
+	})
 }
+
