@@ -8,15 +8,15 @@ import (
 var _ ocrtypes.Logger = &ocrLogger{}
 
 type ocrLogger struct {
-	internal *logger.Logger
-	trace    bool
+	internal  *logger.Logger
+	trace     bool
 	saveError func(string)
 }
 
 func NewLogger(internal *logger.Logger, trace bool, saveError func(string)) ocrtypes.Logger {
 	return &ocrLogger{
-		internal: internal,
-		trace:    trace,
+		internal:  internal,
+		trace:     trace,
 		saveError: saveError,
 	}
 }

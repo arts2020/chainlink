@@ -442,4 +442,3 @@ func TestORM(t *testing.T) {
 		assert.True(t, specErrors[1].CreatedAt.After(specErrors[0].UpdatedAt))
 	})
 }
-
