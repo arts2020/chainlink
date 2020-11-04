@@ -2,6 +2,7 @@ package pipeline_test
 
 import (
 	"context"
+	"github.com/stretchr/testify/assert"
 	"net/url"
 	"testing"
 	"time"
@@ -422,13 +423,23 @@ func TestORM(t *testing.T) {
 		specID, err = orm.CreateSpec(context.Background(), *g)
 		require.NoError(t, err)
 
-		ocrSpecError := "ocr spec errored"
-		orm.UpsertErrorFor(specID, ocrSpecError)
+		ocrSpecError1 := "ocr spec 1 errored"
+		ocrSpecError2 := "ocr spec 2 errored"
+		orm.UpsertErrorFor(specID, ocrSpecError1)
+		orm.UpsertErrorFor(specID, ocrSpecError1)
+		orm.UpsertErrorFor(specID, ocrSpecError2)
 
 		var specErrors []pipeline.SpecError
 		err = db.Find(&specErrors).Error
 		require.NoError(t, err)
-		require.Len(t, specErrors, 1)
+		require.Len(t, specErrors, 2)
+
+		assert.Equal(t, specErrors[0].Occurrences, uint(2))
+		assert.Equal(t, specErrors[1].Occurrences, uint(1))
+		assert.True(t, specErrors[0].CreatedAt.Before(specErrors[0].UpdatedAt))
+		assert.Equal(t, specErrors[0].Description, ocrSpecError1)
+		assert.Equal(t, specErrors[1].Description, ocrSpecError2)
+		assert.True(t, specErrors[1].CreatedAt.After(specErrors[0].UpdatedAt))
 	})
 }
 

@@ -10,12 +10,14 @@ var _ ocrtypes.Logger = &ocrLogger{}
 type ocrLogger struct {
 	internal *logger.Logger
 	trace    bool
+	saveError func(string)
 }
 
-func NewLogger(internal *logger.Logger, trace bool) ocrtypes.Logger {
+func NewLogger(internal *logger.Logger, trace bool, saveError func(string)) ocrtypes.Logger {
 	return &ocrLogger{
 		internal: internal,
 		trace:    trace,
+		saveError: saveError,
 	}
 }
 
@@ -40,6 +42,8 @@ func (ol *ocrLogger) Warn(msg string, fields ocrtypes.LogFields) {
 }
 
 func (ol *ocrLogger) Error(msg string, fields ocrtypes.LogFields) {
+	// TODO: keys and values
+	ol.saveError(msg)
 	ol.internal.Errorw(msg, toKeysAndValues(fields)...)
 }
 
