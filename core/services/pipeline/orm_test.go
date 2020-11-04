@@ -2,10 +2,11 @@ package pipeline_test
 
 import (
 	"context"
-	"github.com/stretchr/testify/assert"
 	"net/url"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/jinzhu/gorm"
 	"github.com/pkg/errors"
@@ -420,7 +421,7 @@ func TestORM(t *testing.T) {
 		defer cleanup()
 
 		g := pipeline.NewTaskDAG()
-		specID, err = orm.CreateSpec(context.Background(), *g)
+		specID, err := orm.CreateSpec(context.Background(), *g)
 		require.NoError(t, err)
 
 		ocrSpecError1 := "ocr spec 1 errored"
