@@ -29,12 +29,11 @@ func RegisterJobType(
 	keyStore *KeyStore,
 	jobSpawner job.Spawner,
 	pipelineRunner pipeline.Runner,
-	pipelineORM pipeline.ORM,
 	ethClient eth.Client,
 	logBroadcaster eth.LogBroadcaster,
 ) {
 	jobSpawner.RegisterDelegate(
-		NewJobSpawnerDelegate(db, config, keyStore, pipelineRunner, pipelineORM, ethClient, logBroadcaster),
+		NewJobSpawnerDelegate(db, config, keyStore, pipelineRunner, ethClient, logBroadcaster),
 	)
 }
 
@@ -43,7 +42,6 @@ type jobSpawnerDelegate struct {
 	config         *orm.Config
 	keyStore       *KeyStore
 	pipelineRunner pipeline.Runner
-	pipelineORM    pipeline.ORM
 	ethClient      eth.Client
 	logBroadcaster eth.LogBroadcaster
 }
@@ -53,11 +51,10 @@ func NewJobSpawnerDelegate(
 	config *orm.Config,
 	keyStore *KeyStore,
 	pipelineRunner pipeline.Runner,
-	pipelineORM pipeline.ORM,
 	ethClient eth.Client,
 	logBroadcaster eth.LogBroadcaster,
 ) *jobSpawnerDelegate {
-	return &jobSpawnerDelegate{db, config, keyStore, pipelineRunner, pipelineORM, ethClient, logBroadcaster}
+	return &jobSpawnerDelegate{db, config, keyStore, pipelineRunner, ethClient, logBroadcaster}
 }
 
 func (d jobSpawnerDelegate) JobType() job.Type {
@@ -118,10 +115,17 @@ func (d jobSpawnerDelegate) ServicesForSpec(spec job.Spec) ([]job.Service, error
 		return nil, errors.Wrap(err, "could not make new peerstore")
 	}
 
-	var pipelineSpecID int32
-	// TODO: Lookup pipeline spec for this jobID
-	ocrLogger := NewLogger(logger.Default, d.config.OCRTraceLogging(), func(msg string) {
-		d.pipelineORM.UpsertErrorFor(pipelineSpecID, msg)
+	var jb models.JobSpecV2
+	err = d.db.First(&jb, "id = ?", spec.JobID()).Error
+	if err != nil {
+		return nil, errors.Wrapf(err, "could not find job with ID %d", spec.JobID())
+	}
+
+	loggerWith := logger.CreateLogger(logger.Default.With(
+		"contractAddress", concreteSpec.ContractAddress,
+		"jobID", concreteSpec.jobID))
+	ocrLogger := NewLogger(loggerWith, d.config.OCRTraceLogging(), func(msg string) {
+		d.pipelineRunner.UpsertErrorFor(jb.PipelineSpecID, msg)
 	})
 
 	listenPort := d.config.P2PListenPort()
