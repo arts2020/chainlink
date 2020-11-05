@@ -154,12 +154,18 @@ func (js *spawner) runLoop() {
 
 		case deleteJobEvent := <-deletedJobEvents:
 			jobIDString := deleteJobEvent.Payload
-			jobID, err := strconv.ParseInt(jobIDString, 10, 32)
+			jobID64, err := strconv.ParseInt(jobIDString, 10, 32)
 			if err != nil {
 				logger.Errorw("Unexpected error decoding deleted job event payload, expected 32-bit integer", "payload", jobIDString, "channel", deleteJobEvent.Channel)
 			}
-			logger.Infow("Unloading/stopping deleted job", "jobID", jobID)
-			js.stopService(int32(jobID))
+			logger.Infow("Unloading/stopping deleted job", "jobID", jobID64)
+			jobID := int32(jobID64)
+			ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
+			if err := js.orm.UnclaimJob(ctx, jobID); err != nil {
+				logger.Errorw("Unexpected error unclaiming job", "jobID", jobID)
+			}
+			cancel()
+			js.stopService(jobID)
 
 		case <-js.chStop:
 			return

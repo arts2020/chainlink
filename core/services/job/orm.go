@@ -22,6 +22,7 @@ type ORM interface {
 	ClaimUnclaimedJobs(ctx context.Context) ([]models.JobSpecV2, error)
 	CreateJob(ctx context.Context, jobSpec *models.JobSpecV2, taskDAG pipeline.TaskDAG) error
 	DeleteJob(ctx context.Context, id int32) error
+	UnclaimJob(ctx context.Context, id int32) error
 	Close() error
 }
 
@@ -140,6 +141,23 @@ func (o *orm) CreateJob(ctx context.Context, jobSpec *models.JobSpecV2, taskDAG 
 // it gracefully
 // See: https://www.pivotaltracker.com/story/show/175287919
 func (o *orm) DeleteJob(ctx context.Context, id int32) error {
+	if err := o.UnclaimJob(ctx, id); err != nil {
+		return errors.Wrap(err, "DeleteJob failed to unclaim job")
+	}
+
+	err := o.db.Exec(`
+            WITH deleted_jobs AS (
+            	DELETE FROM jobs WHERE id = $1 RETURNING offchainreporting_oracle_spec_id, pipeline_spec_id
+            ),
+            deleted_oracle_specs AS (
+				DELETE FROM offchainreporting_oracle_specs WHERE id IN (SELECT offchainreporting_oracle_spec_id FROM deleted_jobs)
+			)
+			DELETE FROM pipeline_specs WHERE id IN (SELECT pipeline_spec_id FROM deleted_jobs)
+    	`, id).Error
+	return errors.Wrap(err, "DeleteJob failed to delete job")
+}
+
+func (o *orm) UnclaimJob(ctx context.Context, id int32) error {
 	o.claimedJobsMu.Lock()
 	defer o.claimedJobsMu.Unlock()
 
@@ -155,16 +173,5 @@ func (o *orm) DeleteJob(ctx context.Context, id int32) error {
 			}
 		}
 	}
-
-	// FIXME: Why not simply call jobORM.pipleineORM.DeleteJob?
-	err := o.db.Exec(`
-            WITH deleted_jobs AS (
-            	DELETE FROM jobs WHERE id = $1 RETURNING offchainreporting_oracle_spec_id, pipeline_spec_id
-            ),
-            deleted_oracle_specs AS (
-				DELETE FROM offchainreporting_oracle_specs WHERE id IN (SELECT offchainreporting_oracle_spec_id FROM deleted_jobs)
-			)
-			DELETE FROM pipeline_specs WHERE id IN (SELECT pipeline_spec_id FROM deleted_jobs)
-    	`, id).Error
-	return errors.Wrap(err, "DeleteJob failed to delete job")
+	return nil
 }
