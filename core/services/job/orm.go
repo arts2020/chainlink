@@ -18,6 +18,7 @@ import (
 
 type ORM interface {
 	ListenForNewJobs() (postgres.Subscription, error)
+	ListenForDeletedJobs() (postgres.Subscription, error)
 	ClaimUnclaimedJobs(ctx context.Context) ([]models.JobSpecV2, error)
 	CreateJob(ctx context.Context, jobSpec *models.JobSpecV2, taskDAG pipeline.TaskDAG) error
 	DeleteJob(ctx context.Context, id int32) error
@@ -56,6 +57,10 @@ func (o *orm) Close() error {
 
 func (o *orm) ListenForNewJobs() (postgres.Subscription, error) {
 	return o.eventBroadcaster.Subscribe(postgres.ChannelJobCreated, "")
+}
+
+func (o *orm) ListenForDeletedJobs() (postgres.Subscription, error) {
+	return o.eventBroadcaster.Subscribe(postgres.ChannelJobDeleted, "")
 }
 
 // ClaimUnclaimedJobs locks all currently unlocked jobs and returns all jobs locked by this process

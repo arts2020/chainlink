@@ -206,4 +206,41 @@ func TestSpawner_CreateJobDeleteJob(t *testing.T) {
 
 		mock.AssertExpectationsForObjects(t, serviceA1, serviceA2)
 	})
+
+	t.Run("closee job services on 'delete_from_jobs' postgres event", func(t *testing.T) {
+		innerJobSpecA, _ := makeOCRJobSpec(t, db)
+		jobSpecA := &spec{innerJobSpecA, jobTypeA}
+
+		eventuallyStart := cltest.NewAwaiter()
+		serviceA1 := new(mocks.Service)
+		serviceA2 := new(mocks.Service)
+		serviceA1.On("Start").Return(nil).Once()
+		serviceA2.On("Start").Return(nil).Once().Run(func(mock.Arguments) { eventuallyStart.ItHappened() })
+
+		orm := job.NewORM(db, config, pipeline.NewORM(db, config, eventBroadcaster, unloader), eventBroadcaster, &postgres.NullAdvisoryLocker{})
+		defer orm.Close()
+		spawner := job.NewSpawner(orm, config)
+
+		delegateA := &delegate{jobTypeA, []job.Service{serviceA1, serviceA2}, 0, nil, offchainreporting.NewJobSpawnerDelegate(nil, nil, nil, nil, nil, nil)}
+		spawner.RegisterDelegate(delegateA)
+
+		jobSpecIDA, err := spawner.CreateJob(context.Background(), jobSpecA)
+		require.NoError(t, err)
+		delegateA.jobID = jobSpecIDA
+
+		spawner.Start()
+		defer spawner.Stop()
+
+		eventuallyStart.AwaitOrFail(t, 10*time.Second)
+
+		eventuallyClose := cltest.NewAwaiter()
+		serviceA1.On("Close").Return(nil).Once()
+		serviceA2.On("Close").Return(nil).Once().Run(func(mock.Arguments) { eventuallyClose.ItHappened() })
+
+		require.NoError(t, db.Exec(`DELETE FROM jobs WHERE id = ?`, jobSpecIDA).Error)
+
+		eventuallyClose.AwaitOrFail(t, 10*time.Second)
+
+		mock.AssertExpectationsForObjects(t, serviceA1, serviceA2)
+	})
 }

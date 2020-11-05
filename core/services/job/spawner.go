@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"time"
 
@@ -117,7 +118,7 @@ func (js *spawner) runLoop() {
 	defer close(js.chDone)
 	defer js.destroy()
 
-	// Initialize the Postgres event listener for new jobs
+	// Initialize the Postgres event listener for created and deleted jobs
 	var newJobEvents <-chan postgres.Event
 	newJobs, err := js.orm.ListenForNewJobs()
 	if err != nil {
@@ -125,6 +126,14 @@ func (js *spawner) runLoop() {
 	} else {
 		defer newJobs.Close()
 		newJobEvents = newJobs.Events()
+	}
+	var deletedJobEvents <-chan postgres.Event
+	deletedJobs, err := js.orm.ListenForDeletedJobs()
+	if err != nil {
+		logger.Warn("Job spawner could not subscribe to deleted job events")
+	} else {
+		defer deletedJobs.Close()
+		deletedJobEvents = deletedJobs.Events()
 	}
 
 	// Initialize the DB poll ticker
@@ -142,6 +151,15 @@ func (js *spawner) runLoop() {
 
 		case jobID := <-js.chStopJob:
 			js.stopService(jobID)
+
+		case deleteJobEvent := <-deletedJobEvents:
+			jobIDString := deleteJobEvent.Payload
+			jobID, err := strconv.ParseInt(jobIDString, 10, 32)
+			if err != nil {
+				logger.Errorw("Unexpected error decoding deleted job event payload, expected 32-bit integer", "payload", jobIDString, "channel", deleteJobEvent.Channel)
+			}
+			logger.Infow("Unloading/stopping deleted job", "jobID", jobID)
+			js.stopService(int32(jobID))
 
 		case <-js.chStop:
 			return
