@@ -9,7 +9,7 @@ type Unloader struct {
 	mock.Mock
 }
 
-// UnloadJob provides a mock function with given fields: jobID
-func (_m *Unloader) UnloadJob(jobID int32) {
+// JobWentMissing provides a mock function with given fields: jobID
+func (_m *Unloader) JobWentMissing(jobID int32) {
 	_m.Called(jobID)
 }

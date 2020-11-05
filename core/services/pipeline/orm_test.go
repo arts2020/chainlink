@@ -427,11 +427,11 @@ func TestORM_CreateRunWhenJobDeleted(t *testing.T) {
 	orm, _, cleanup := cltest.NewPipelineORM(t, config, db, unloader)
 	defer cleanup()
 
-	unloader.On("UnloadJob", int32(-1)).Once().Return()
+	unloader.On("JobWentMissing", int32(-1)).Once().Return()
 
 	// Use non-existent job ID to simulate situation if a job is deleted between runs
 	_, err := orm.CreateRun(context.Background(), -1, nil)
-	require.EqualError(t, err, "job with ID -1 was not found (most likely it was deleted)")
+	require.EqualError(t, err, "no job found with id -1 (most likely it was deleted)")
 
 	unloader.AssertExpectations(t)
 }

@@ -34,7 +34,7 @@ type (
 	}
 
 	Unloader interface {
-		UnloadJob(jobID int32)
+		JobWentMissing(jobID int32)
 	}
 
 	orm struct {
@@ -135,7 +135,7 @@ func (o *orm) CreateRun(ctx context.Context, jobID int32, meta map[string]interf
             RETURNING *`, JSONSerializable{Val: meta}, jobID).Scan(&run).Error
 		if gorm.IsRecordNotFoundError(err) {
 			logger.Warnw("job deleted, skipping run and unloading job", "jobID", jobID)
-			o.unloader.UnloadJob(jobID)
+			o.unloader.JobWentMissing(jobID)
 			return errors.Errorf("no job found with id %v (most likely it was deleted)", jobID)
 		} else if err != nil {
 			return errors.Wrap(err, "could not create pipeline run")

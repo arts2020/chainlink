@@ -31,7 +31,7 @@ type (
 		Stop()
 		CreateJob(ctx context.Context, spec Spec) (int32, error)
 		DeleteJob(ctx context.Context, jobID int32) error
-		UnloadJob(jobID int32)
+		JobWentMissing(jobID int32)
 		RegisterDelegate(delegate Delegate)
 	}
 
@@ -43,6 +43,7 @@ type (
 		startUnclaimedServicesWorker utils.SleeperTask
 		services                     map[int32][]Service
 		chStopJob                    chan int32
+		chJobWentMissing             chan int32
 
 		utils.StartStopOnce
 		chStop chan struct{}
@@ -127,13 +128,13 @@ func (js *spawner) runLoop() {
 		defer newJobs.Close()
 		newJobEvents = newJobs.Events()
 	}
-	var deletedJobEvents <-chan postgres.Event
+	var pgDeletedJobEvents <-chan postgres.Event
 	deletedJobs, err := js.orm.ListenForDeletedJobs()
 	if err != nil {
 		logger.Warn("Job spawner could not subscribe to deleted job events")
 	} else {
 		defer deletedJobs.Close()
-		deletedJobEvents = deletedJobs.Events()
+		pgDeletedJobEvents = deletedJobs.Events()
 	}
 
 	// Initialize the DB poll ticker
@@ -152,24 +153,31 @@ func (js *spawner) runLoop() {
 		case jobID := <-js.chStopJob:
 			js.stopService(jobID)
 
-		case deleteJobEvent := <-deletedJobEvents:
+		case deleteJobEvent := <-pgDeletedJobEvents:
 			jobIDString := deleteJobEvent.Payload
 			jobID64, err := strconv.ParseInt(jobIDString, 10, 32)
 			if err != nil {
 				logger.Errorw("Unexpected error decoding deleted job event payload, expected 32-bit integer", "payload", jobIDString, "channel", deleteJobEvent.Channel)
 			}
-			logger.Infow("Unloading/stopping deleted job", "jobID", jobID64)
 			jobID := int32(jobID64)
-			js.stopService(jobID)
-			ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
-			if err := js.orm.UnclaimJob(ctx, jobID); err != nil {
-				logger.Errorw("Unexpected error unclaiming job", "jobID", jobID)
-			}
-			cancel()
+			js.unloadDeletedJob(context.TODO(), jobID)
+
+		case jobID := <-js.chJobWentMissing:
+			js.unloadDeletedJob(context.TODO(), jobID)
 
 		case <-js.chStop:
 			return
 		}
+	}
+}
+
+func (js *spawner) unloadDeletedJob(ctx context.Context, jobID int32) {
+	logger.Infow("Unloading deleted job", "jobID", jobID)
+	js.stopService(jobID)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := js.orm.UnclaimJob(ctx, jobID); err != nil {
+		logger.Errorw("Unexpected error unclaiming job", "jobID", jobID)
 	}
 }
 
@@ -278,14 +286,17 @@ func (js *spawner) DeleteJob(ctx context.Context, jobID int32) error {
 	}
 	logger.Infow("Deleted job", "jobID", jobID)
 
-	js.UnloadJob(jobID)
+	select {
+	case <-js.chStop:
+	case js.chStopJob <- jobID:
+	}
 
 	return nil
 }
 
-func (js *spawner) UnloadJob(jobID int32) {
+func (js *spawner) JobWentMissing(jobID int32) {
 	select {
 	case <-js.chStop:
-	case js.chStopJob <- jobID:
+	case js.chJobWentMissing <- jobID:
 	}
 }

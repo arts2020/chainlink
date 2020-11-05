@@ -327,11 +327,11 @@ func TestRunner(t *testing.T) {
 		err = jobORM.DeleteJob(ctx, dbSpec.ID)
 		require.NoError(t, err)
 
-		unloader.On("UnloadJob", dbSpec.ID).Once().Return()
+		unloader.On("JobWentMissing", dbSpec.ID).Once().Return()
 
 		// Create another run
 		_, err = runner.CreateRun(context.Background(), dbSpec.ID, nil)
-		require.EqualError(t, err, fmt.Sprintf("job with ID %v was not found (most likely it was deleted)", dbSpec.ID))
+		require.EqualError(t, err, fmt.Sprintf("no job found with id %v (most likely it was deleted)", dbSpec.ID))
 
 		ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()

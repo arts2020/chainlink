@@ -64,7 +64,7 @@ func (_m *Spawner) Stop() {
 	_m.Called()
 }
 
-// UnloadJob provides a mock function with given fields: jobID
-func (_m *Spawner) UnloadJob(jobID int32) {
+// JobWentMissing provides a mock function with given fields: jobID
+func (_m *Spawner) JobWentMissing(jobID int32) {
 	_m.Called(jobID)
 }
