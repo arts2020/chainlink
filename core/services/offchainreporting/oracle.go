@@ -125,7 +125,7 @@ func (d jobSpawnerDelegate) ServicesForSpec(spec job.Spec) ([]job.Service, error
 		"contractAddress", concreteSpec.ContractAddress,
 		"jobID", concreteSpec.jobID))
 	ocrLogger := NewLogger(loggerWith, d.config.OCRTraceLogging(), func(msg string) {
-		d.pipelineRunner.UpsertErrorFor(jb.PipelineSpecID, msg)
+		d.pipelineRunner.RecordError(jb.PipelineSpecID, msg)
 	})
 
 	listenPort := d.config.P2PListenPort()

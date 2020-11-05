@@ -308,7 +308,8 @@ func TestRunner(t *testing.T) {
 		err = jobORM.CreateJob(context.Background(), dbSpec, ocrspec.TaskDAG())
 		require.NoError(t, err)
 		var jb models.JobSpecV2
-		err = db.Preload("OffchainreportingOracleSpec").First(&jb).Error
+		err = db.Preload("OffchainreportingOracleSpec", "p2p_peer_id = ?", ek.PeerID).
+			Find(&jb).Error
 		require.NoError(t, err)
 
 		config.Config.Set("P2P_LISTEN_PORT", 2000) // Required to create job spawner delegate.

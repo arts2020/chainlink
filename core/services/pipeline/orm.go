@@ -29,7 +29,7 @@ type ORM interface {
 	DeleteRunsOlderThan(threshold time.Duration) error
 
 	FindBridge(name models.TaskType) (models.BridgeType, error)
-	UpsertErrorFor(specID int32, description string)
+	RecordError(specID int32, description string)
 }
 
 type orm struct {
@@ -435,7 +435,7 @@ func (o *orm) FindBridge(name models.TaskType) (models.BridgeType, error) {
 	return FindBridge(o.db, name)
 }
 
-func (o *orm) UpsertErrorFor(pipelineSpecID int32, description string) {
+func (o *orm) RecordError(pipelineSpecID int32, description string) {
 	pse := SpecError{PipelineSpecID: pipelineSpecID, Description: description, Occurrences: 1}
 	err := o.db.
 		Set(

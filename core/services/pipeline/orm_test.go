@@ -426,9 +426,9 @@ func TestORM(t *testing.T) {
 
 		ocrSpecError1 := "ocr spec 1 errored"
 		ocrSpecError2 := "ocr spec 2 errored"
-		orm.UpsertErrorFor(specID, ocrSpecError1)
-		orm.UpsertErrorFor(specID, ocrSpecError1)
-		orm.UpsertErrorFor(specID, ocrSpecError2)
+		orm.RecordError(specID, ocrSpecError1)
+		orm.RecordError(specID, ocrSpecError1)
+		orm.RecordError(specID, ocrSpecError2)
 
 		var specErrors []pipeline.SpecError
 		err = db.Find(&specErrors).Error
