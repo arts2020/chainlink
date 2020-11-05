@@ -141,9 +141,8 @@ func (o *orm) CreateJob(ctx context.Context, jobSpec *models.JobSpecV2, taskDAG 
 // it gracefully
 // See: https://www.pivotaltracker.com/story/show/175287919
 func (o *orm) DeleteJob(ctx context.Context, id int32) error {
-	if err := o.UnclaimJob(ctx, id); err != nil {
-		return errors.Wrap(err, "DeleteJob failed to unclaim job")
-	}
+	o.claimedJobsMu.Lock()
+	defer o.claimedJobsMu.Unlock()
 
 	err := o.db.Exec(`
             WITH deleted_jobs AS (
@@ -154,13 +153,24 @@ func (o *orm) DeleteJob(ctx context.Context, id int32) error {
 			)
 			DELETE FROM pipeline_specs WHERE id IN (SELECT pipeline_spec_id FROM deleted_jobs)
     	`, id).Error
-	return errors.Wrap(err, "DeleteJob failed to delete job")
+	if err != nil {
+		return errors.Wrap(err, "DeleteJob failed to delete job")
+	}
+
+	if err := o.unclaimJob(ctx, id); err != nil {
+		return errors.Wrap(err, "DeleteJob failed to unclaim job")
+	}
+
+	return nil
 }
 
 func (o *orm) UnclaimJob(ctx context.Context, id int32) error {
 	o.claimedJobsMu.Lock()
 	defer o.claimedJobsMu.Unlock()
+	return o.unclaimJob(ctx, id)
+}
 
+func (o *orm) unclaimJob(ctx context.Context, id int32) error {
 	for i, j := range o.claimedJobs {
 		if j.ID == id {
 			// Delete the current job from the claimedJobs list

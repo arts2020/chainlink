@@ -160,12 +160,12 @@ func (js *spawner) runLoop() {
 			}
 			logger.Infow("Unloading/stopping deleted job", "jobID", jobID64)
 			jobID := int32(jobID64)
+			js.stopService(jobID)
 			ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
 			if err := js.orm.UnclaimJob(ctx, jobID); err != nil {
 				logger.Errorw("Unexpected error unclaiming job", "jobID", jobID)
 			}
 			cancel()
-			js.stopService(jobID)
 
 		case <-js.chStop:
 			return

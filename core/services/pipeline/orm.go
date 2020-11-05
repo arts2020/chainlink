@@ -135,11 +135,8 @@ func (o *orm) CreateRun(ctx context.Context, jobID int32, meta map[string]interf
             RETURNING *`, JSONSerializable{Val: meta}, jobID).Scan(&run).Error
 		if gorm.IsRecordNotFoundError(err) {
 			logger.Warnw("job deleted, skipping run and unloading job", "jobID", jobID)
-			if err := o.unclaimJob(jobID); err != nil {
-				return errors.Wrap(err, "could not unclaim deleted job")
-			}
 			o.unloader.UnloadJob(jobID)
-			return errors.Errorf("job with ID %v was not found (most likely it was deleted)", jobID)
+			return errors.Errorf("no job found with id %v (most likely it was deleted)", jobID)
 		} else if err != nil {
 			return errors.Wrap(err, "could not create pipeline run")
 		}
@@ -445,13 +442,6 @@ func (o *orm) DeleteRunsOlderThan(threshold time.Duration) error {
 
 func (o *orm) FindBridge(name models.TaskType) (models.BridgeType, error) {
 	return FindBridge(o.db, name)
-}
-
-// TODO
-func (o *orm) unclaimJob(jobID int32) error {
-	// Need to call js.stopService(jobID) on the job spawner to gracefully exit the job
-	// Then remove it from claimed jobs
-	return nil
 }
 
 // FindBridge find a bridge using the given database
